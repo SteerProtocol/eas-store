@@ -1,0 +1,59 @@
+{
+  "name": "@steerprotocol/eas-store",
+  "version": "0.1.0",
+  "description": "Attestation-backed key-value store built on Ethereum Attestation Service.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "workspaces": [
+    "examples/*"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "clean": "rm -rf dist coverage",
+    "demo:build": "npm --workspace eas-store-vite-demo run build",
+    "demo:dev": "npm --workspace eas-store-vite-demo run dev --",
+    "demo:e2e": "npm --workspace eas-store-vite-demo run test:e2e",
+    "demo:preview": "npm --workspace eas-store-vite-demo run preview --",
+    "demo:typecheck": "npm --workspace eas-store-vite-demo run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "attestations",
+    "database",
+    "eas",
+    "ethereum",
+    "key-value-store",
+    "storage"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@ethereum-attestation-service/eas-sdk": "^2.9.0",
+    "ethers": "^6.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@vitest/coverage-v8": "^4.1.5",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
+  }
+}

@@ -2,6 +2,14 @@
   "name": "@steerprotocol/eas-store",
   "version": "0.1.0",
   "description": "Attestation-backed key-value store built on Ethereum Attestation Service.",
+  "homepage": "https://github.com/SteerProtocol/eas-store#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SteerProtocol/eas-store.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SteerProtocol/eas-store/issues"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -45,8 +53,13 @@
     "storage"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "dependencies": {
     "@ethereum-attestation-service/eas-sdk": "^2.9.0",
+    "@scure/bip39": "^2.2.0",
     "ethers": "^6.16.0"
   },
   "devDependencies": {

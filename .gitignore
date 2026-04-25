@@ -1,6 +1,7 @@
 node_modules
 dist
 coverage
+.nyc_output
 playwright-report
 test-results
 examples/vite-demo/dist

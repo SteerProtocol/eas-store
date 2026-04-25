@@ -11,6 +11,8 @@ function sortRecords(records: IndexedStoreRecord[]): IndexedStoreRecord[] {
 }
 
 export class MemoryIndexer implements IndexerAdapter {
+  readonly scope = "local" as const;
+
   private readonly records = new Map<string, IndexedStoreRecord>();
 
   supportsVerifiedReads(): boolean {

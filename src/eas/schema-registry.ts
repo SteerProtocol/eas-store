@@ -3,6 +3,7 @@ import { ZeroAddress } from "ethers";
 
 import { createEASClient, getTransport, requireTransactionSigner } from "./client";
 import { getEASNetworkPreset } from "./networks";
+import { STORE_SCHEMA } from "./schema";
 import { ConfigurationError } from "../errors";
 import type { Address, EASRuntimeConfig, Hex } from "../types";
 
@@ -27,6 +28,10 @@ export interface RegisteredSchema {
 
 export interface EnsuredSchema extends RegisteredSchema {
   created: boolean;
+}
+
+export interface SchemaStatus extends RegisteredSchema {
+  exists: boolean;
 }
 
 export async function resolveSchemaRegistryAddress(
@@ -124,5 +129,63 @@ export async function ensureSchema(
       ...created,
       created: true
     };
+  }
+}
+
+export function getDefaultStoreSchemaUID(options: {
+  resolverAddress?: Address;
+  revocable?: boolean;
+} = {}): Hex {
+  return SchemaRegistry.getSchemaUID(
+    STORE_SCHEMA,
+    options.resolverAddress ?? ZeroAddress,
+    options.revocable ?? true
+  ) as Hex;
+}
+
+export async function ensureDefaultStoreSchema(
+  config: SchemaRegistryRuntimeConfig,
+  options: Omit<RegisterSchemaOptions, "schema"> = {}
+): Promise<EnsuredSchema> {
+  return ensureSchema(config, {
+    ...options,
+    schema: STORE_SCHEMA
+  });
+}
+
+export async function getRegisteredSchema(
+  config: SchemaRegistryRuntimeConfig,
+  uid: Hex
+): Promise<SchemaStatus> {
+  const schemaRegistryAddress = await resolveSchemaRegistryAddress(config);
+  const registry = new SchemaRegistry(schemaRegistryAddress);
+  const transport = getTransport(config);
+
+  if (transport) {
+    registry.connect(transport);
+  }
+
+  const schema = await registry.getSchema({ uid });
+
+  return {
+    uid,
+    schema: schema.schema,
+    resolverAddress: schema.resolver as Address,
+    revocable: schema.revocable,
+    chainId: config.chainId,
+    schemaRegistryAddress,
+    exists: true
+  };
+}
+
+export async function schemaExists(
+  config: SchemaRegistryRuntimeConfig,
+  uid: Hex
+): Promise<boolean> {
+  try {
+    await getRegisteredSchema(config, uid);
+    return true;
+  } catch {
+    return false;
   }
 }

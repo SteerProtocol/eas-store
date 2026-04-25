@@ -5,7 +5,7 @@ import { EASRecordVerifier } from "../src/eas/verifier";
 import { ZERO_UID } from "../src/eas/schema";
 import * as clientModule from "../src/eas/client";
 import { hashText } from "../src/crypto/hash";
-import type { IndexedStoreRecord } from "../src/types";
+import type { IndexedStoreRecord, StorageAdapter } from "../src/types";
 import {
   cloneIndexedRecord,
   createOffchainStore,
@@ -33,7 +33,7 @@ async function createVerifiedRawRecord() {
   };
 }
 
-function createVerifier(storage = new MemoryStorage()) {
+function createVerifier(storage: StorageAdapter = new MemoryStorage()) {
   return new EASRecordVerifier(
     {
       chainId: 8453,
@@ -194,6 +194,19 @@ describe("EASRecordVerifier", () => {
       value: null
     });
     expect(await createVerifier(storage).verifyRecord(mismatchedPrevious)).toEqual({
+      verified: false,
+      value: null
+    });
+  });
+
+  it("treats missing storage values as unverifiable records", async () => {
+    const { raw } = await createVerifiedRawRecord();
+    const verifier = createVerifier({
+      put: vi.fn(),
+      get: vi.fn().mockRejectedValue(new Error("missing blob"))
+    });
+
+    await expect(verifier.verifyRecord(raw)).resolves.toEqual({
       verified: false,
       value: null
     });

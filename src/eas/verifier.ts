@@ -17,6 +17,7 @@ export interface VerificationResult<T = unknown> {
   verified: boolean;
   value: T | null;
   record?: IndexedStoreRecord;
+  reason?: string;
 }
 
 function nowInSeconds(): bigint {
@@ -99,24 +100,35 @@ export class EASRecordVerifier {
   }
 
   async verifyRecord<T = unknown>(record: IndexedStoreRecord): Promise<VerificationResult<T>> {
+    const fail = (reason: string): VerificationResult<T> => {
+      const result: VerificationResult<T> = {
+        verified: false,
+        value: null
+      };
+      Object.defineProperty(result, "reason", {
+        value: reason,
+        enumerable: false
+      });
+      return result;
+    };
     const effectiveRecord =
       record.attestation.mode === "onchain"
         ? await this.verifyOnchainAttestation(record)
         : record;
 
     if (!effectiveRecord) {
-      return { verified: false, value: null };
+      return fail("onchain attestation could not be validated against the chain");
     }
 
     if (effectiveRecord.attestation.schema.toLowerCase() !== this.policy.schemaUID.toLowerCase()) {
-      return { verified: false, value: null };
+      return fail("attestation schema does not match verification policy");
     }
 
     if (
       effectiveRecord.record.namespaceHash.toLowerCase() !==
       this.policy.namespaceHash.toLowerCase()
     ) {
-      return { verified: false, value: null };
+      return fail("attestation namespace does not match verification policy");
     }
 
     if (
@@ -125,14 +137,14 @@ export class EASRecordVerifier {
         this.policy.trustedAttesters
       )
     ) {
-      return { verified: false, value: null };
+      return fail("attester is not trusted by verification policy");
     }
 
     if (
       this.policy.requireRecipient &&
       !sameAddress(effectiveRecord.attestation.recipient, this.policy.requireRecipient)
     ) {
-      return { verified: false, value: null };
+      return fail("recipient does not match verification policy");
     }
 
     if (
@@ -140,7 +152,7 @@ export class EASRecordVerifier {
       effectiveRecord.attestation.expirationTime > 0n &&
       effectiveRecord.attestation.expirationTime < nowInSeconds()
     ) {
-      return { verified: false, value: null };
+      return fail("attestation is expired");
     }
 
     if (
@@ -150,14 +162,14 @@ export class EASRecordVerifier {
         effectiveRecord.attestation.revocationTime > 0n
       )
     ) {
-      return { verified: false, value: null };
+      return fail("attestation is revoked");
     }
 
     if (
       encodeStoreRecord(effectiveRecord.record).toLowerCase() !==
       effectiveRecord.attestation.data.toLowerCase()
     ) {
-      return { verified: false, value: null };
+      return fail("attestation data does not match the indexed record");
     }
 
     const decodedRecord = decodeStoreRecord(effectiveRecord.attestation.data);
@@ -167,14 +179,14 @@ export class EASRecordVerifier {
       decodedRecord.valueHash.toLowerCase() !== effectiveRecord.record.valueHash.toLowerCase() ||
       decodedRecord.previousUID.toLowerCase() !== effectiveRecord.record.previousUID.toLowerCase()
     ) {
-      return { verified: false, value: null };
+      return fail("decoded attestation payload does not match the indexed record");
     }
 
     if (effectiveRecord.attestation.mode === "offchain") {
       const offchainValid = await this.verifyOffchainAttestation(effectiveRecord);
 
       if (!offchainValid) {
-        return { verified: false, value: null };
+        return fail("offchain attestation signature is invalid or missing");
       }
     }
 
@@ -185,14 +197,14 @@ export class EASRecordVerifier {
       const transport = getTransport(this.runtime);
 
       if (!transport) {
-        return { verified: false, value: null };
+        return fail("timestamp verification requires a chain provider");
       }
 
       const eas = createEASClient(this.runtime);
       const timestamp = await eas.getTimestamp(effectiveRecord.attestation.uid);
 
       if (timestamp === 0n) {
-        return { verified: false, value: null };
+        return fail("offchain attestation has not been timestamped onchain");
       }
     }
 
@@ -200,14 +212,20 @@ export class EASRecordVerifier {
       return { verified: true, value: null, record: effectiveRecord };
     }
 
-    const bytes = effectiveRecord.record.valueURI
-      ? await this.storage.get(effectiveRecord.record.valueURI)
-      : new Uint8Array();
+    let bytes: Uint8Array;
+
+    try {
+      bytes = effectiveRecord.record.valueURI
+        ? await this.storage.get(effectiveRecord.record.valueURI)
+        : new Uint8Array();
+    } catch {
+      return fail(`stored value could not be loaded from ${effectiveRecord.record.valueURI}`);
+    }
 
     if (
       hashBytes(bytes).toLowerCase() !== effectiveRecord.record.valueHash.toLowerCase()
     ) {
-      return { verified: false, value: null };
+      return fail("stored value hash does not match attestation payload");
     }
 
     return {

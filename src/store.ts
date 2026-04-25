@@ -182,6 +182,16 @@ export class EASKeyStore {
 
   private assertVerifiedReadSupport(mode: "onchain" | "offchain"): void {
     if (this.indexer.supportsVerifiedReads?.(mode)) {
+      if (
+        mode === "onchain" &&
+        this.indexer.scope === "remote" &&
+        this.storage.persistence === "local"
+      ) {
+        throw new ConfigurationError(
+          "Onchain mode with a remote indexer requires inline or remote storage. Local-only storage cannot be verified after EASScan rediscovers the attestation."
+        );
+      }
+
       return;
     }
 
@@ -409,7 +419,7 @@ export class EASKeyStore {
 
     if (!result.verified) {
       throw new ConfigurationError(
-        "The record was written but failed local verification. Check easVersion/provider and storage settings."
+        `The record was written but failed local verification: ${result.reason ?? "unknown verification failure"}. Check easVersion/provider and storage settings.`
       );
     }
 

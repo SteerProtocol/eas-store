@@ -36,6 +36,8 @@ function toBigInt(value: string | null | undefined): bigint {
 }
 
 export class EASScanIndexer implements IndexerAdapter {
+  readonly scope = "remote" as const;
+
   private readonly fetchImpl: typeof fetch;
 
   constructor(private readonly options: EASScanIndexerOptions) {

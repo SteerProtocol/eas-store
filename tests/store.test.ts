@@ -5,6 +5,7 @@ import {
   ConfigurationError,
   EASKeyStore,
   EASScanIndexer,
+  InlineStorage,
   MemoryIndexer,
   MemoryStorage,
   StoreOperation,
@@ -322,18 +323,16 @@ describe("EASKeyStore", () => {
 
   it("reads onchain records across process boundaries using EASScan plus chain verification", async () => {
     const signer = createTransactionSigner();
-    const storage = new MemoryStorage();
+    const storage = new InlineStorage();
     const connectSpy = vi
       .spyOn(EAS.prototype, "connect")
       .mockImplementation(function (this: EAS) {
         return this;
       });
     let encodedData = "0x" as `0x${string}`;
-    let valueURI = "";
     let attester = "";
     const attestSpy = vi.spyOn(EAS.prototype, "attest").mockImplementation(async (request) => {
       encodedData = request.data.data as `0x${string}`;
-      valueURI = request.data.data ? "" : "";
       attester = await signer.getAddress();
 
       return {
@@ -414,7 +413,6 @@ describe("EASKeyStore", () => {
     expect(attestSpy).toHaveBeenCalledOnce();
     expect(getAttestationSpy).toHaveBeenCalled();
     expect(connectSpy).toHaveBeenCalled();
-    expect(valueURI).toBe("");
   });
 
   it("excludes deleted heads from default queries but includes them when requested", async () => {

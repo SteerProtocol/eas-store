@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test and build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npm --workspace eas-store-vite-demo run test:e2e:install
+
+      - name: Typecheck SDK
+        run: npm run typecheck
+
+      - name: Test SDK with coverage
+        run: npm test -- --coverage
+
+      - name: Build SDK
+        run: npm run build
+
+      - name: Typecheck demo
+        run: npm run demo:typecheck
+
+      - name: Build demo
+        run: npm run demo:build
+
+      - name: Test demo e2e
+        run: npm run demo:e2e
+
+      - name: Test demo e2e coverage
+        run: npm --workspace eas-store-vite-demo run test:e2e:coverage

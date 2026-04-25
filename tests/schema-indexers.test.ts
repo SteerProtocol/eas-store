@@ -2,7 +2,7 @@ import { AbiCoder } from "ethers";
 import { SchemaEncoder } from "@ethereum-attestation-service/eas-sdk";
 import { describe, expect, it, vi } from "vitest";
 
-import { MemoryIndexer, StoreOperation, ZERO_UID } from "../src";
+import { LocalStorageIndexer, MemoryIndexer, StoreOperation, ZERO_UID } from "../src";
 import {
   decodeRecordExtra,
   decodeStoreRecord,
@@ -134,6 +134,98 @@ describe("schema helpers and indexers", () => {
 
     expect(results).toHaveLength(1);
     expect(results[0]?.attestation.uid).toBe(second.attestation.uid);
+  });
+
+  it("persists and filters local storage indexer results", async () => {
+    const data = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => data.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        data.set(key, value);
+      }
+    };
+    const indexer = new LocalStorageIndexer({
+      key: "test-index",
+      storage
+    });
+    const first = makeRecord();
+    const second = makeRecord({
+      attestation: {
+        ...makeRecord().attestation,
+        uid: "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        time: 5n
+      },
+      record: {
+        ...makeRecord().record,
+        keyHash:
+          "0x4444444444444444444444444444444444444444444444444444444444444444",
+        version: 2n
+      },
+      lookupKey: "profile:bob"
+    });
+
+    expect(indexer.supportsVerifiedReads()).toBe(true);
+    await indexer.index(first);
+    await indexer.index(second);
+
+    await expect(
+      indexer.query({
+        schemaUID: SCHEMA_UID,
+        keyHash: first.record.keyHash,
+        mode: "offchain"
+      })
+    ).resolves.toEqual([first]);
+    await expect(
+      new LocalStorageIndexer({
+        key: "test-index",
+        storage
+      }).query({
+        schemaUID: SCHEMA_UID,
+        mode: "offchain",
+        limit: 1
+      })
+    ).resolves.toEqual([second]);
+    await expect(
+      indexer.query({
+        schemaUID:
+          "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" as `0x${string}`
+      })
+    ).resolves.toHaveLength(0);
+    await expect(
+      indexer.query({
+        schemaUID: SCHEMA_UID,
+        namespaceHash:
+          "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" as `0x${string}`
+      })
+    ).resolves.toHaveLength(0);
+    await expect(
+      indexer.query({
+        schemaUID: SCHEMA_UID,
+        attester:
+          "0x0000000000000000000000000000000000000009" as `0x${string}`
+      })
+    ).resolves.toHaveLength(0);
+    await expect(
+      indexer.query({
+        schemaUID: SCHEMA_UID,
+        recipient:
+          "0x0000000000000000000000000000000000000008" as `0x${string}`
+      })
+    ).resolves.toHaveLength(0);
+    await expect(
+      indexer.query({
+        schemaUID: SCHEMA_UID,
+        mode: "onchain"
+      })
+    ).resolves.toHaveLength(0);
+    await expect(
+      new LocalStorageIndexer({
+        key: "empty-index",
+        storage
+      }).query({
+        schemaUID: SCHEMA_UID
+      })
+    ).resolves.toEqual([]);
   });
 
   it("rejects memory indexer results on schema, attester, recipient, and mode mismatch", async () => {

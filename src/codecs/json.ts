@@ -22,7 +22,7 @@ export function decodeStoredValue<T = unknown>(
   bytes: Uint8Array,
   contentType: string
 ): T {
-  if (contentType === "application/json") {
+  if (contentType === "application/json" || contentType.endsWith("+json")) {
     return JSON.parse(textDecoder.decode(bytes)) as T;
   }
 

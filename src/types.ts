@@ -8,6 +8,8 @@ import type { TypedDataDomain, TypedDataField } from "ethers";
 export type Hex = `0x${string}`;
 export type Address = Hex;
 export type StoreMode = "onchain" | "offchain";
+export type StoragePersistence = "inline" | "remote" | "local";
+export type IndexerScope = "remote" | "local";
 
 export enum StoreOperation {
   Set = 1,
@@ -26,6 +28,7 @@ export interface TypedDataSignerLike {
 export type StoreSigner = TypedDataSignerLike & Partial<TransactionSigner>;
 
 export interface StorageAdapter {
+  readonly persistence?: StoragePersistence;
   put(data: Uint8Array, contentType: string): Promise<string>;
   get(uri: string): Promise<Uint8Array>;
 }
@@ -76,6 +79,7 @@ export interface IndexQuery {
 }
 
 export interface IndexerAdapter {
+  readonly scope?: IndexerScope;
   index?(record: IndexedStoreRecord): Promise<void>;
   query(filter: IndexQuery): Promise<IndexedStoreRecord[]>;
   supportsVerifiedReads?(mode: StoreMode): boolean;

@@ -274,27 +274,9 @@ npm run typecheck
 npm test
 ```
 
-## Release
-
-The package is published as `@steerprotocol/eas-store`.
-
-Releases are intended to run through GitHub Actions and npm trusted publishing:
-
-- GitHub workflow: `.github/workflows/npm-publish.yml`
-- npm package: `@steerprotocol/eas-store`
-- npm trusted publisher provider: GitHub Actions
-- npm trusted publisher owner/repo: `SteerProtocol/eas-store`
-- npm trusted publisher workflow: `npm-publish.yml`
-
-The publish workflow uses OIDC (`id-token: write`) and does not require an
-`NPM_TOKEN` secret. Before the first release, configure the trusted publisher in
-npm package settings, then publish a GitHub release or run the workflow
-manually. The workflow runs typecheck, coverage, build, and `npm publish
---access public`.
-
 ## Demo App
 
-A browser demo lives in [examples/vite-demo](/Users/derekbarrera/Development/SteerFinance/eas-store/examples/vite-demo/README.md). It runs the real SDK with:
+A browser demo lives in [examples/vite-demo](./examples/vite-demo/README.md). It runs the real SDK with:
 
 - `mode: "offchain"`
 - `MemoryStorage`
@@ -305,13 +287,9 @@ The same demo also includes an onchain path with:
 
 - Base / Base Sepolia EAS contract prefilled from known network presets
 - all EASScan-indexed EAS chains available in the onchain network selector
-- custom EAS chain inputs for newer or private deployments
+- custom EAS chain inputs for additional deployments
 - inline attestation storage for small JSON values
 - schema publishing through `EASStore.schema.ensureDefault(...)`
 - automatic schema UID handoff into the write form
 
 That makes it useful for both browser-level smoke tests and wallet-backed developer demos.
-
-The demo deploys to GitHub Pages from `.github/workflows/pages.yml`. The Vite
-build switches to `base: "/eas-store/"` only when `GITHUB_PAGES=true`, so local
-dev and preview keep serving from `/`.

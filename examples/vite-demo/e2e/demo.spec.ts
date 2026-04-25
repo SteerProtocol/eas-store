@@ -92,7 +92,7 @@ test("developers can exercise the sdk through the demo flow", async ({ page }) =
 
   await page.getByTestId("key-input").fill("profile:secret");
   await openRecordEditor(page);
-  await expect(page.getByTestId("entry-private-option")).toContainText("Private encrypted");
+  await expect(page.getByTestId("entry-private-option")).toContainText("Encrypted");
   await page.getByTestId("value-input").fill(
     JSON.stringify(
       {
@@ -136,6 +136,7 @@ test("database manager layout stays responsive without horizontal overflow", asy
   await expect(page.getByRole("heading", { name: "EAS Store" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "profiles" })).toBeVisible();
   await expect(page.getByRole("button", { name: "New Entry" })).toBeVisible();
+  await expect(page.getByTestId("network-select")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Three steps, end-to-end." })).toBeVisible();
   await expect(page.getByText("import { EASStore } from")).toBeVisible();
   await expect(page.getByText("const record = await store.getRecord")).toBeVisible();
@@ -190,7 +191,7 @@ test("onchain toggle starts wallet flow and falls back to local without a wallet
 });
 
 test("mocked onchain wallet validates chain id before creating a client", async ({ page }) => {
-  await installMockWallet(page, "0x2105");
+  await installMockWallet(page, "0x7a69");
   await page.goto("/");
 
   await page.getByTestId("mode-onchain").click();
@@ -200,21 +201,34 @@ test("mocked onchain wallet validates chain id before creating a client", async 
   await expect(page.getByTestId("wallet-help")).toContainText("Ephemeral signer");
 });
 
-test("mocked onchain wallet can initialize the wallet scoped client", async ({ page }) => {
+test("onchain toggle auto-selects the connected EAS chain", async ({ page }) => {
+  await installMockWallet(page, "0x1");
+  await page.goto("/");
+
+  await page.getByTestId("mode-onchain").click();
+
+  await expect(page.getByTestId("demo-status")).toContainText("Ready");
+  await expect(page.getByTestId("network-select")).toHaveCount(0);
+  await expect(page.getByTestId("active-namespace")).toContainText("demo");
+  await expect(page.getByTestId("signer-address")).toContainText(MOCK_WALLET_ADDRESS);
+  await expect(page.getByTestId("last-action")).toContainText("Onchain client initialized");
+});
+
+test("mocked onchain wallet can initialize the onchain client without changing namespace", async ({ page }) => {
   await installMockWallet(page, "0x14a34");
   await page.goto("/");
 
   await page.getByTestId("mode-onchain").click();
 
   await expect(page.getByTestId("demo-status")).toContainText("Ready");
-  await expect(page.getByTestId("active-namespace")).toContainText("demo.profile.111111");
+  await expect(page.getByTestId("active-namespace")).toContainText("demo");
   await expect(page.getByTestId("signer-address")).toContainText(MOCK_WALLET_ADDRESS);
   await expect(page.getByTestId("last-action")).toContainText("Onchain client initialized");
 });
 
 test("schema builder supports adding templates, moving fields, removing fields, and restoring defaults", async ({ page }) => {
   await installMockWallet(page, "0x14a34");
-  await page.goto("/");
+  await page.goto("/#setup");
   await switchToSchemaBuilder(page);
   await expect(page.getByTestId("schema-definition-output")).toContainText("bytes32 namespace");
 
@@ -247,7 +261,7 @@ test("schema builder supports adding templates, moving fields, removing fields, 
 
 test("schema publishing validates empty definitions before requesting a wallet", async ({ page }) => {
   await installMockWallet(page, "0x14a34");
-  await page.goto("/");
+  await page.goto("/#setup");
   await switchToSchemaBuilder(page);
 
   while ((await page.getByRole("button", { name: "Remove" }).count()) > 0) {
@@ -267,7 +281,7 @@ test("schema publishing validates empty definitions before requesting a wallet",
 
 test("custom onchain setup validates user supplied contract addresses with a wallet present", async ({ page }) => {
   await installMockWallet(page, "0x14a34");
-  await page.goto("/");
+  await page.goto("/#setup");
 
   await page.getByTestId("mode-onchain").click();
   await page.getByTestId("network-select").selectOption("custom");
@@ -289,7 +303,7 @@ test("custom onchain setup validates user supplied contract addresses with a wal
 
 test("custom onchain setup validates chain id, schema registry, and schema uid mistakes", async ({ page }) => {
   await installMockWallet(page, "0x14a34");
-  await page.goto("/");
+  await page.goto("/#setup");
 
   await page.getByTestId("mode-onchain").click();
   await page.getByTestId("network-select").selectOption("custom");
@@ -331,7 +345,7 @@ test("custom onchain setup validates chain id, schema registry, and schema uid m
 
 test("custom onchain setup can initialize with a memory indexer when GraphQL is blank", async ({ page }) => {
   await installMockWallet(page, "0x14a34");
-  await page.goto("/");
+  await page.goto("/#setup");
 
   await page.getByTestId("mode-onchain").click();
   await page.getByTestId("network-select").selectOption("custom");
@@ -346,13 +360,13 @@ test("custom onchain setup can initialize with a memory indexer when GraphQL is 
 
   await page.getByTestId("reset-button").click();
   await expect(page.getByTestId("demo-status")).toContainText("Ready");
-  await expect(page.getByTestId("active-namespace")).toContainText("demo.profile.111111");
+  await expect(page.getByTestId("active-namespace")).toContainText("demo");
   await expect(page.getByTestId("last-action")).toContainText("Onchain client initialized");
 });
 
 test("onchain reconnect reuses the wallet flow and default preset can be restored", async ({ page }) => {
   await installMockWallet(page, "0x14a34");
-  await page.goto("/");
+  await page.goto("/#setup");
 
   await page.getByTestId("mode-onchain").click();
   await page.getByTestId("network-select").selectOption("custom");

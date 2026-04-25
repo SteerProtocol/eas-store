@@ -34,6 +34,7 @@ import {
   StoreOperation,
   recoveryPhraseBackup,
   ensureSchema,
+  getEASNetworkPreset,
   getEASNetworkPresetByKey,
   inlineStorage,
   type EncryptedKeyBackup,
@@ -85,7 +86,7 @@ const DEFAULT_ONCHAIN_SCHEMA_UID = EASStore.schema.uidForDefault({
   resolverAddress: ZeroAddress as `0x${string}`,
   revocable: true
 });
-const DEFAULT_NAMESPACE = "demo.profile";
+const DEFAULT_NAMESPACE = "demo";
 const DEFAULT_KEY = "profile:alice";
 const DEFAULT_NETWORK_KEY = "base-sepolia" as const;
 const DEFAULT_VALUE = JSON.stringify(
@@ -137,6 +138,7 @@ type DemoStore = {
   signerAddress: string;
   storageLabel: string;
   indexerLabel: string;
+  onchainConfig?: OnchainConfigInput;
 };
 
 function getDefaultPreset(): EASNetworkPreset {
@@ -161,6 +163,27 @@ function buildOnchainConfigFromPreset(
     schemaUID: overrides.schemaUID ?? "",
     graphqlEndpoint: overrides.graphqlEndpoint ?? preset.graphqlEndpoint
   };
+}
+
+function alignOnchainConfigToWalletChain(
+  input: OnchainConfigInput,
+  walletChainId: number
+): OnchainConfigInput {
+  const currentChainId = Number.parseInt(input.chainId.trim(), 10);
+
+  if (input.networkKey === "custom" || currentChainId === walletChainId) {
+    return input;
+  }
+
+  const walletPreset = getEASNetworkPreset(walletChainId);
+
+  if (!walletPreset) {
+    return input;
+  }
+
+  return buildOnchainConfigFromPreset(walletPreset, {
+    schemaUID: input.schemaUID
+  });
 }
 
 function getEnvConfig(): OnchainConfigInput {
@@ -263,17 +286,13 @@ async function createOffchainDemoStore(namespace: string): Promise<DemoStore> {
 }
 
 function resolveDemoOnchainNamespace(namespace: string, address: `0x${string}`): string {
-  const trimmed = namespace.trim() || DEFAULT_NAMESPACE;
-
-  if (trimmed !== DEFAULT_NAMESPACE) {
-    return trimmed;
-  }
-
-  return `${DEFAULT_NAMESPACE}.${address.slice(2, 8).toLowerCase()}`;
+  void address;
+  return namespace.trim() || DEFAULT_NAMESPACE;
 }
 
 async function createOnchainWalletContext(input: OnchainConfigInput): Promise<{
   config: ResolvedOnchainConfig;
+  alignedConfigInput: OnchainConfigInput;
   provider: BrowserProvider;
   signer: Awaited<ReturnType<BrowserProvider["getSigner"]>>;
   address: `0x${string}`;
@@ -290,10 +309,11 @@ async function createOnchainWalletContext(input: OnchainConfigInput): Promise<{
   await provider.send("eth_requestAccounts", []);
   const signer = await provider.getSigner();
   const address = (await signer.getAddress()) as `0x${string}`;
-  const config = parseOnchainConfig(input, {
+  const network = await provider.getNetwork();
+  const configInput = alignOnchainConfigToWalletChain(input, Number(network.chainId));
+  const config = parseOnchainConfig(configInput, {
     requireSchemaUID: false
   });
-  const network = await provider.getNetwork();
 
   if (Number(network.chainId) !== config.chainId) {
     throw new Error(
@@ -303,6 +323,7 @@ async function createOnchainWalletContext(input: OnchainConfigInput): Promise<{
 
   return {
     config,
+    alignedConfigInput: configInput,
     provider,
     signer,
     address
@@ -313,7 +334,7 @@ async function createOnchainDemoStore(
   namespace: string,
   configInput: OnchainConfigInput
 ): Promise<DemoStore> {
-  const { config, provider, signer, address } = await createOnchainWalletContext(
+  const { config, alignedConfigInput, provider, signer, address } = await createOnchainWalletContext(
     configInput
   );
   const resolvedNamespace = resolveDemoOnchainNamespace(namespace, address);
@@ -326,7 +347,7 @@ async function createOnchainDemoStore(
     network: {
       chainId: config.chainId,
       easContractAddress: config.easContractAddress,
-      easVersion: resolvePreset(configInput.networkKey)?.easVersion ?? "1.3.0",
+      easVersion: resolvePreset(alignedConfigInput.networkKey)?.easVersion ?? "1.3.0",
       schemaRegistryAddress: config.schemaRegistryAddress,
       ...(config.graphqlEndpoint ? { graphqlEndpoint: config.graphqlEndpoint } : {})
     },
@@ -343,7 +364,8 @@ async function createOnchainDemoStore(
     namespace: resolvedNamespace,
     signerAddress: address,
     storageLabel: "InlineStorage",
-    indexerLabel: config.graphqlEndpoint ? "EASScanIndexer" : "MemoryIndexer"
+    indexerLabel: config.graphqlEndpoint ? "EASScanIndexer" : "MemoryIndexer",
+    onchainConfig: alignedConfigInput
   };
 }
 
@@ -581,6 +603,9 @@ export default function App() {
   const [privatePhrase, setPrivatePhrase] = useState("");
   const [privateStatus, setPrivateStatus] = useState("");
   const [privateOutput, setPrivateOutput] = useState("null");
+  const [routeHash, setRouteHash] = useState(() =>
+    typeof window === "undefined" ? "" : window.location.hash
+  );
 
   function clearOutputs(nextAction: string) {
     startTransition(() => {
@@ -645,6 +670,19 @@ export default function App() {
       setShowAdvancedSchema(true);
     }
   }, [schemaDefinition]);
+
+  useEffect(() => {
+    function syncHash() {
+      setRouteHash(window.location.hash);
+    }
+
+    syncHash();
+    window.addEventListener("hashchange", syncHash);
+
+    return () => {
+      window.removeEventListener("hashchange", syncHash);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -818,9 +856,12 @@ export default function App() {
     try {
       const namespace = namespaceInput.trim() || DEFAULT_NAMESPACE;
       const nextStore = await createOnchainDemoStore(namespace, onchainConfig);
+      if (nextStore.onchainConfig) {
+        setOnchainConfig(nextStore.onchainConfig);
+      }
       applyDemoStore(
         nextStore,
-        `Onchain client initialized with wallet-scoped namespace ${nextStore.namespace}.`
+        `Onchain client initialized with namespace ${nextStore.namespace}.`
       );
     } catch (cause) {
       setStatus("Failed");
@@ -838,10 +879,13 @@ export default function App() {
     try {
       const namespace = namespaceInput.trim() || DEFAULT_NAMESPACE;
       const nextStore = await createOnchainDemoStore(namespace, onchainConfig);
+      if (nextStore.onchainConfig) {
+        setOnchainConfig(nextStore.onchainConfig);
+      }
       setMode("onchain");
       applyDemoStore(
         nextStore,
-        `Onchain client initialized with wallet-scoped namespace ${nextStore.namespace}.`
+        `Onchain client initialized with namespace ${nextStore.namespace}.`
       );
     } catch (cause) {
       setMode("offchain");
@@ -944,6 +988,7 @@ export default function App() {
   const schemaFieldCount = getSchemaFieldCount(schemaDefinition);
   const schemaReady = Boolean(onchainConfig.schemaUID.trim());
   const indexingSummary = getIndexingSummary(onchainConfig);
+  const showDeveloperSetup = mode === "onchain" && routeHash === "#setup";
 
   const outputValue =
     outputView === "latest"
@@ -1155,6 +1200,7 @@ export default function App() {
   const selectedRow =
     recordRows.find((row) => row.key === key) ?? recordRows[0] ?? SEEDED_RECORD_ROWS[0]!;
   const detailUID = selectedRow.uid ? `${selectedRow.uid.slice(0, 6)}...${selectedRow.uid.slice(-4)}` : "pending";
+  const valueLineNumbers = valueText.split(/\r?\n/).map((_, index) => index + 1);
   const profileRecordCount = recordRows.filter((row) => row.key.startsWith("profile:")).length;
   const featureRows = [
     {
@@ -1177,7 +1223,7 @@ export default function App() {
 
 const store = await EASStore.onchain({
   signer,
-  namespace: "my-dapp.profile",
+  namespace: "my-dapp",
   schemaUID
 });
 
@@ -1224,7 +1270,7 @@ console.log(record.value);
             <a href="#features">Features</a>
             <a href="#how-it-works">How It Works</a>
             <a href="#docs">Docs</a>
-            <a href="https://github.com/steerprotocol" rel="noreferrer">GitHub</a>
+            <a href="https://github.com/SteerProtocol/eas-store" rel="noreferrer">GitHub</a>
           </div>
           <div className="hidden w-[72px] md:block" aria-hidden="true" />
         </nav>
@@ -1328,7 +1374,7 @@ console.log(record.value);
                 </div>
                 <div className="mt-5 grid gap-2">
                   <label className="grid gap-1.5 text-sm">
-                    <span className="font-medium text-slate-600">Namespace</span>
+                    <span className="font-medium text-slate-600">App namespace</span>
                     <Input
                       className="h-9 rounded-md bg-white text-sm"
                       data-testid="namespace-input"
@@ -1432,84 +1478,143 @@ console.log(record.value);
           </Card>
 
           {editorOpen ? (
-            <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Record editor">
-              <aside className="max-h-[92vh] w-full max-w-[860px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_28px_90px_rgba(15,23,42,0.28)]">
-                <div className="mb-4 flex items-center justify-between gap-4">
+            <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/25 p-4 backdrop-blur-md" role="dialog" aria-modal="true" aria-label="Record editor">
+              <aside className="max-h-[92vh] w-full max-w-[1120px] overflow-y-auto rounded-[18px] border-0 bg-white p-6 text-slate-950 shadow-[0_28px_90px_rgba(15,23,42,0.20)] ring-1 ring-[#dfe7f1] md:p-8">
+                <div className="mb-7 flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-sm font-medium text-slate-500">Record editor</p>
-                    <h3 className="text-xl font-semibold tracking-[-0.02em]">{keyLabel(key)}</h3>
+                    <p className="text-[15px] font-semibold text-slate-500">Record editor</p>
+                    <h3 className="mt-2 text-[32px] font-medium leading-none tracking-[-0.05em]">{keyLabel(key)}</h3>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3">
                     <Tooltip>
                       <TooltipTrigger>
-                        <span className="inline-flex h-9 items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-700">
+                        <span className="inline-flex h-11 items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-4 text-[15px] font-semibold text-emerald-700 shadow-sm">
                           <ShieldCheck className="size-4" />
-                          Passed
+                          Verified
                         </span>
                       </TooltipTrigger>
                       <TooltipContent>
                         Verified canonical record, hash, and history continuity.
                       </TooltipContent>
                     </Tooltip>
-                    <Button type="button" variant="outline" size="icon" className="rounded-full" onClick={() => setEditorOpen(false)} aria-label="Close editor">
-                      <X className="size-4" />
-                    </Button>
+                    <button
+                      type="button"
+                      className={draftPrivate ? "inline-flex h-11 items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 text-[15px] font-semibold text-blue-700 shadow-sm" : "inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-[15px] font-semibold text-slate-600 shadow-sm hover:bg-slate-50"}
+                      data-testid="entry-private-option"
+                      disabled={busy}
+                      onClick={() => {
+                        if (draftPrivate) {
+                          setDraftPrivate(false);
+                          return;
+                        }
+
+                        if (!privateReady) {
+                          setPrivateSetupOpen(true);
+                          return;
+                        }
+
+                        setDraftPrivate(true);
+                      }}
+                    >
+                      <LockKeyhole className="size-4" />
+                      {draftPrivate ? "Encrypted" : "Public"}
+                    </button>
+                    <button
+                      type="button"
+                      className="grid size-11 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-50 hover:text-slate-900"
+                      onClick={() => setEditorOpen(false)}
+                      aria-label="Close editor"
+                    >
+                      <X className="size-5" />
+                    </button>
                   </div>
                 </div>
-                <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-1">
-                  <button
-                    type="button"
-                    className={!draftPrivate ? "rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-950 shadow-sm" : "rounded-lg px-3 py-2 text-sm font-semibold text-slate-500"}
-                    data-testid="entry-public-option"
-                    onClick={() => setDraftPrivate(false)}
-                  >
-                    Public attestation
-                  </button>
-                  <button
-                    type="button"
-                    className={draftPrivate ? "rounded-lg bg-white px-3 py-2 text-sm font-semibold text-violet-700 shadow-sm" : "rounded-lg px-3 py-2 text-sm font-semibold text-slate-500"}
-                    data-testid="entry-private-option"
-                    onClick={() => {
-                      if (!privateReady) {
-                        setPrivateSetupOpen(true);
-                        return;
-                      }
 
-                      setDraftPrivate(true);
-                    }}
-                  >
-                    Private encrypted
-                  </button>
-                </div>
-                <p className="text-sm font-medium text-slate-500">Key</p>
-                <div className="mt-2 flex items-center gap-2">
-                  <p className="font-semibold text-slate-950">{keyLabel(key)}</p>
-                  <Copy className="size-4 text-slate-500" />
-                </div>
-                <p className="mt-5 text-sm font-medium text-slate-500">Value</p>
-                <Textarea
-                  className="mt-2 min-h-[106px] rounded-lg border-slate-200 bg-white font-mono text-sm leading-5 text-emerald-700"
-                  data-testid="value-input"
-                  value={valueText}
-                  onChange={(event) => setValueText(event.target.value)}
-                  spellCheck={false}
-                />
+                <div className="grid gap-7 lg:grid-cols-[minmax(0,1fr)_360px]">
+                  <section className="min-w-0">
+                    <label className="grid gap-3 text-[15px] font-semibold text-slate-500">
+                      Key
+                      <div className="flex h-12 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-base font-medium text-slate-900 shadow-sm">
+                        <Input
+                          className="h-auto min-w-0 border-0 bg-transparent p-0 text-base shadow-none focus-visible:ring-0"
+                          value={keyLabel(key)}
+                          onChange={(event) => setKey(profileKey(event.target.value))}
+                        />
+                        <Copy className="size-4 shrink-0 text-slate-400" />
+                      </div>
+                    </label>
 
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <Button
-                    type="button"
-                    className="h-9 rounded-md bg-blue-600 text-white hover:bg-blue-700"
-                    data-testid="modal-set-button"
-                    disabled={controlsDisabled}
-                    onClick={handleSaveRecord}
-                  >
-                    {draftPrivate ? <LockKeyhole className="size-4" /> : <Plus className="size-4" />}
-                    {draftPrivate ? "Save private" : "Save public"}
-                  </Button>
+                    <label className="mt-7 grid gap-3 text-[15px] font-semibold text-slate-500">
+                      Value (JSON)
+                      <div className="grid grid-cols-[42px_minmax(0,1fr)] rounded-lg border border-slate-200 bg-white shadow-sm">
+                        <div className="select-none border-r border-slate-100 px-3 py-4 text-right font-mono text-sm leading-7 text-slate-400">
+                          {valueLineNumbers.map((line) => (
+                            <div key={line}>{line}</div>
+                          ))}
+                        </div>
+                        <Textarea
+                          className="min-h-[320px] resize-y border-0 bg-transparent px-4 py-4 font-mono text-sm leading-7 text-emerald-700 shadow-none focus-visible:ring-0"
+                          data-testid="value-input"
+                          value={valueText}
+                          onChange={(event) => setValueText(event.target.value)}
+                          spellCheck={false}
+                        />
+                      </div>
+                    </label>
+                  </section>
+
+                  <aside className="border-t border-slate-200 pt-5 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-4">
+                    <div className="mb-7 flex items-center justify-between">
+                      <div className="flex items-center gap-3 text-slate-600">
+                        <History className="size-5" />
+                        <p className="font-semibold">Versions</p>
+                      </div>
+                      <button
+                        type="button"
+                        className="text-sm font-semibold text-blue-600 hover:text-blue-700"
+                        data-testid="history-button"
+                        disabled={controlsDisabled}
+                        onClick={handleLoadHistory}
+                      >
+                        View all
+                      </button>
+                    </div>
+                    <div className="grid gap-4">
+                      {[
+                        [`${selectedRow.version}`, detailUID, selectedRow.updated, true],
+                        ["v2", "0x91c3...ab22", "4 days ago", false],
+                        ["v1", "0x0000...0001", "12 days ago", false]
+                      ].map(([version, uid, time, current]) => (
+                        <div key={`${version}-${uid}`} className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-start gap-4">
+                              <ShieldCheck className="mt-0.5 size-5 text-emerald-600" />
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-lg font-semibold tracking-[-0.02em] text-slate-950">{version}</p>
+                                  {current ? (
+                                    <span className="rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-600">Current</span>
+                                  ) : null}
+                                </div>
+                                <div className="mt-3 flex items-center gap-2 text-sm text-slate-500">
+                                  {uid}
+                                  <Copy className="size-3.5 text-slate-400" />
+                                </div>
+                              </div>
+                            </div>
+                            <span className="text-sm font-medium text-slate-500">{time}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </aside>
+                </div>
+
+                <div className="mt-8 flex flex-col-reverse gap-3 border-t border-slate-200 pt-7 sm:flex-row sm:justify-end">
                   <Button
                     type="button"
                     variant="outline"
-                    className="h-9 rounded-md border-red-200 text-red-600 hover:bg-red-50"
+                    className="h-12 rounded-lg border-red-100 bg-white px-8 text-base font-semibold text-red-600 shadow-sm hover:bg-red-50"
                     data-testid="delete-button"
                     disabled={controlsDisabled}
                     onClick={handleDeleteRecord}
@@ -1517,41 +1622,15 @@ console.log(record.value);
                     <Trash2 className="size-4" />
                     Delete
                   </Button>
-                </div>
-
-                <div className="mt-4">
-                  <p className="mb-2 text-base font-semibold text-slate-700">Audit Log</p>
-                  <div className="grid gap-1.5">
-                    {[
-                      [`${selectedRow.operation} ${selectedRow.version}`, detailUID, selectedRow.updated],
-                      ["SET v2", "0x91c3...ab22", "4 days ago"],
-                      ["SET v1", "0x8f3a...91c2", "12 days ago"]
-                    ].map(([action, uid, time]) => (
-                      <div key={action} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-                            <ShieldCheck className="size-4 text-emerald-600" />
-                            {action}
-                          </span>
-                          <span className="text-xs text-slate-500">{time}</span>
-                        </div>
-                        <div className="mt-2 flex items-center gap-2 pl-6 text-xs text-slate-600">
-                          UID: {uid}
-                          <Copy className="size-3 text-slate-400" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
                   <Button
                     type="button"
-                    variant="outline"
-                    className="mt-3 h-9 w-full rounded-md border-blue-500 text-blue-600 hover:bg-blue-50"
-                    data-testid="history-button"
+                    className="h-12 rounded-lg bg-blue-600 px-8 text-base font-semibold text-white shadow-[0_12px_28px_rgba(37,99,235,0.22)] hover:bg-blue-700"
+                    data-testid="modal-set-button"
                     disabled={controlsDisabled}
-                    onClick={handleLoadHistory}
+                    onClick={handleSaveRecord}
                   >
-                    <History className="size-4" />
-                    View Full History
+                    {draftPrivate ? <LockKeyhole className="size-4" /> : <Plus className="size-4" />}
+                    Save changes
                   </Button>
                   <Button
                     type="button"
@@ -1561,15 +1640,7 @@ console.log(record.value);
                     onClick={handleVerifyRecord}
                   >
                     Verify Record
-                  </Button>
-                </div>
-                <div className="mt-4 rounded-lg border border-slate-200 bg-slate-950 p-3">
-                  <div data-slot="card-title" className="text-sm font-semibold text-white">Verification inspector</div>
-                  <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{outputTitle}</p>
-                  <ScrollArea className="mt-2 h-[94px]">
-                    <pre className="whitespace-pre-wrap break-words bg-transparent p-0 font-mono text-xs leading-relaxed text-emerald-100">{outputValue}</pre>
-                  </ScrollArea>
-                  <p className="mt-2 text-xs text-slate-300">{lastAction}</p>
+                    </Button>
                 </div>
               </aside>
             </div>
@@ -1584,9 +1655,9 @@ console.log(record.value);
               }
             }}
           >
-            <DialogContent className="max-h-[90vh] max-w-[380px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 text-slate-950 shadow-[0_28px_90px_rgba(15,23,42,0.28)]" data-testid="private-setup-dialog">
-              <DialogHeader className="gap-1">
-                <div className="mb-2 flex size-10 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
+            <DialogContent className="max-h-[90vh] max-w-[390px] overflow-y-auto rounded-[18px] border-0 bg-white p-4 text-slate-950 shadow-[0_22px_58px_rgba(15,23,42,0.16)] ring-1 ring-[#dfe7f1]" data-testid="private-setup-dialog">
+              <DialogHeader className="gap-1.5">
+                <div className="mb-2 flex size-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 ring-1 ring-blue-100">
                   <LockKeyhole className="size-5" />
                 </div>
                 <DialogTitle className="text-lg tracking-[-0.02em]">Set up private mode</DialogTitle>
@@ -1595,17 +1666,17 @@ console.log(record.value);
                 </DialogDescription>
               </DialogHeader>
               {privateSetupView === "created" || privateSetupView === "restore" ? (
-                <div className="rounded-xl border border-violet-100 bg-violet-50 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-700">Recovery phrase</p>
+                <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Recovery phrase</p>
                   <Textarea
-                    className="mt-2 min-h-[58px] resize-none border-violet-100 bg-white text-sm"
+                    className="mt-2 min-h-[58px] resize-none rounded-lg border-slate-200 bg-white text-sm shadow-sm focus-visible:border-blue-300 focus-visible:ring-blue-100"
                     data-testid="private-phrase"
                     value={privatePhrase}
                     placeholder={privateSetupView === "restore" ? "Paste your dapp recovery phrase." : "Recovery phrase will appear here."}
                     readOnly={privateSetupView === "created"}
                     onChange={(event) => setPrivatePhrase(event.target.value)}
                   />
-                  <p className="mt-2 text-xs leading-5 text-violet-800">
+                  <p className="mt-2 text-xs leading-5 text-slate-600">
                     This restores the dapp encryption key only. It is not your wallet seed phrase.
                   </p>
                 </div>
@@ -1613,27 +1684,27 @@ console.log(record.value);
               {privateStatus ? (
                 <p className="text-xs font-medium leading-5 text-slate-600">{privateStatus}</p>
               ) : null}
-              <DialogFooter className="-mx-4 -mb-4 grid gap-2 rounded-b-2xl border-t border-slate-100 bg-slate-50 p-4 sm:grid-cols-2">
+              <DialogFooter className="-mx-4 -mb-4 grid gap-2 rounded-b-[18px] border-t border-slate-100 bg-slate-50/80 p-4 sm:grid-cols-2">
                 {privateSetupView === "restore" ? (
                   <>
-                    <Button type="button" className="h-10 bg-violet-600 text-white hover:bg-violet-700" data-testid="private-restore-button" disabled={busy || !privatePhrase.trim()} onClick={handlePrivateRestore}>
+                    <Button type="button" className="h-10 rounded-lg bg-blue-600 text-white shadow-[0_10px_24px_rgba(37,99,235,0.18)] hover:bg-blue-700" data-testid="private-restore-button" disabled={busy || !privatePhrase.trim()} onClick={handlePrivateRestore}>
                       Restore key
                     </Button>
-                    <Button type="button" variant="secondary" className="h-10" disabled={busy} onClick={() => setPrivateSetupView("intro")}>
+                    <Button type="button" variant="outline" className="h-10 rounded-lg border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50" disabled={busy} onClick={() => setPrivateSetupView("intro")}>
                       Back
                     </Button>
                   </>
                 ) : (
                   <>
-                    <Button type="button" className="h-10 bg-violet-600 text-white hover:bg-violet-700" data-testid="private-setup-button" disabled={busy} onClick={handleSetupPrivateMode}>
+                    <Button type="button" className="h-10 rounded-lg bg-blue-600 text-white shadow-[0_10px_24px_rgba(37,99,235,0.18)] hover:bg-blue-700" data-testid="private-setup-button" disabled={busy} onClick={handleSetupPrivateMode}>
                       Create dapp key
                     </Button>
-                    <Button type="button" variant="secondary" className="h-10" data-testid="private-restore-choice" disabled={busy} onClick={() => setPrivateSetupView("restore")}>
+                    <Button type="button" variant="outline" className="h-10 rounded-lg border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50" data-testid="private-restore-choice" disabled={busy} onClick={() => setPrivateSetupView("restore")}>
                       Restore existing
                     </Button>
                   </>
                 )}
-                <Button type="button" variant="outline" className="h-10 sm:col-span-2" disabled={busy} onClick={() => setPrivateSetupOpen(false)}>
+                <Button type="button" variant="outline" className="h-10 rounded-lg border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50 sm:col-span-2" disabled={busy} onClick={() => setPrivateSetupOpen(false)}>
                   Not now
                 </Button>
               </DialogFooter>
@@ -1652,7 +1723,7 @@ console.log(record.value);
             <p data-testid="wallet-help">{mode === "onchain" ? (walletAvailable ? "Detected" : "No injected wallet") : "Ephemeral signer"}</p>
           </div>
 
-          {mode === "onchain" ? (
+          {showDeveloperSetup ? (
             <Card className="mx-auto mt-5 max-w-[1080px] rounded-[18px] border-blue-100 bg-blue-50/40 shadow-sm">
               <CardContent className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.75fr)]">
                 <div className="grid gap-3 md:grid-cols-2">
@@ -1807,17 +1878,17 @@ console.log(record.value);
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
               {[
-                { icon: FileIcon, title: "Read the docs", description: "Guides and references" },
-                { icon: Box, title: "View on GitHub", description: "Open source" },
-                { icon: MessageCircle, title: "Join the community", description: "Chat with builders" }
-              ].map(({ icon: Icon, title, description }) => (
-                <div key={title} className="flex items-start gap-4 rounded-xl p-3">
+                { icon: FileIcon, title: "Read the docs", description: "Guides and references", href: "#docs" },
+                { icon: Box, title: "View on GitHub", description: "Open source", href: "https://github.com/SteerProtocol/eas-store" },
+                { icon: MessageCircle, title: "Join the community", description: "Chat with builders", href: "https://github.com/SteerProtocol/eas-store/discussions" }
+              ].map(({ icon: Icon, title, description, href }) => (
+                <a key={title} href={href} className="flex items-start gap-4 rounded-xl p-3 transition hover:bg-slate-50">
                   <Icon className="mt-0.5 size-6 shrink-0 text-slate-700" />
                   <div>
                     <p className="text-sm font-semibold text-slate-950">{title}</p>
                     <p className="mt-1 text-xs leading-5 text-slate-600">{description}</p>
                   </div>
-                </div>
+                </a>
               ))}
             </div>
           </section>

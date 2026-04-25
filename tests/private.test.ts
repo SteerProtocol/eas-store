@@ -31,6 +31,11 @@ import {
 } from "../src/private/schemas";
 import { SCHEMA_UID, createWalletSigner } from "./helpers";
 
+function tamperBase64Url(value: string): string {
+  const replacement = value.endsWith("A") ? "B" : "A";
+  return `${value.slice(0, -1)}${replacement}`;
+}
+
 describe("private records", () => {
   it("encrypts and decrypts values with real WebCrypto", async () => {
     const crypto = new WebCryptoPrivateCryptoProvider();
@@ -67,7 +72,7 @@ describe("private records", () => {
       crypto.decryptValue({
         envelope: {
           ...envelope,
-          ciphertext: envelope.ciphertext.replace(/.$/, "A")
+          ciphertext: tamperBase64Url(envelope.ciphertext)
         },
         key: "profile.email",
         namespace: "test.private",

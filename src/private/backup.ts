@@ -101,7 +101,7 @@ export class RecoveryPhraseBackupProvider implements KeyBackupProvider {
 
     const salt = randomBytes(16);
     const iv = randomBytes(12);
-    const iterations = 250_000;
+    const iterations = 600_000;
     const createdAt = new Date().toISOString();
     const phraseKey = await derivePhraseKey({
       phrase,
@@ -158,7 +158,7 @@ export class RecoveryPhraseBackupProvider implements KeyBackupProvider {
     }
     if (
       !Number.isSafeInteger(input.backup.encryption.iterations) ||
-      input.backup.encryption.iterations < 250_000 ||
+      input.backup.encryption.iterations < 600_000 ||
       input.backup.encryption.iterations > 2_000_000
     ) {
       throw new VerificationError("Encrypted key backup KDF iterations are outside the supported range.");

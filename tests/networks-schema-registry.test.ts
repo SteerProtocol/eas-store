@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as clientModule from "../src/eas/client";
 import {
   ensureSchema,
+  KNOWN_EAS_NETWORKS,
   getEASNetworkPreset,
   getEASNetworkPresetByKey,
   registerSchema,
@@ -34,6 +35,7 @@ beforeEach(() => {
 
 describe("network presets and schema registry helpers", () => {
   it("exposes known Base presets", () => {
+    expect(KNOWN_EAS_NETWORKS.length).toBeGreaterThanOrEqual(12);
     expect(getEASNetworkPreset(8453)).toMatchObject({
       key: "base",
       easContractAddress: BASE_EAS_ADDRESS,
@@ -43,6 +45,14 @@ describe("network presets and schema registry helpers", () => {
       chainId: 84532,
       easContractAddress: BASE_EAS_ADDRESS,
       schemaRegistryAddress: BASE_SCHEMA_REGISTRY_ADDRESS
+    });
+    expect(getEASNetworkPresetByKey("ethereum")).toMatchObject({
+      chainId: 1,
+      graphqlEndpoint: "https://easscan.org/graphql"
+    });
+    expect(getEASNetworkPresetByKey("optimism-sepolia")).toMatchObject({
+      chainId: 11155420,
+      graphqlEndpoint: "https://optimism-sepolia-bedrock.easscan.org/graphql"
     });
   });
 

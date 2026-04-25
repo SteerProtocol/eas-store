@@ -167,10 +167,9 @@ function getEnvConfig(): OnchainConfigInput {
   const env = import.meta.env as ImportMetaEnv & EnvConfig;
   const defaultPreset = getDefaultPreset();
   const requestedKey = env.VITE_EAS_NETWORK_KEY;
-  const preset =
-    requestedKey === "base" || requestedKey === "base-sepolia"
-      ? getEASNetworkPresetByKey(requestedKey)
-      : defaultPreset;
+  const preset = requestedKey
+    ? (getEASNetworkPresetByKey(requestedKey as EASNetworkPreset["key"]) ?? defaultPreset)
+    : defaultPreset;
 
   return {
     networkKey:
@@ -503,6 +502,26 @@ function resolvePreset(networkKey: KnownNetworkKey): EASNetworkPreset | undefine
   }
 
   return getEASNetworkPresetByKey(networkKey);
+}
+
+function getIndexingSummary(input: OnchainConfigInput): {
+  label: string;
+  detail: string;
+  tone: "indexed" | "custom";
+} {
+  if (input.graphqlEndpoint.trim()) {
+    return {
+      label: "Indexed reads",
+      detail: "EASScan GraphQL is configured, so remote records can be discovered and then verified against chain data.",
+      tone: "indexed"
+    };
+  }
+
+  return {
+    label: "Write capable",
+    detail: "No GraphQL indexer is configured. Writes can still attest onchain, but cross-session reads need a durable indexer.",
+    tone: "custom"
+  };
 }
 
 function getSchemaFieldCount(schema: string): number {
@@ -903,6 +922,7 @@ export default function App() {
   const selectedPreset = resolvePreset(onchainConfig.networkKey);
   const schemaFieldCount = getSchemaFieldCount(schemaDefinition);
   const schemaReady = Boolean(onchainConfig.schemaUID.trim());
+  const indexingSummary = getIndexingSummary(onchainConfig);
 
   const outputValue =
     outputView === "latest"
@@ -1649,6 +1669,15 @@ console.log(record.value);
                     <span className="font-medium text-slate-700">GraphQL Endpoint</span>
                     <Input data-testid="graphql-endpoint-input" value={onchainConfig.graphqlEndpoint} onChange={(event) => setOnchainConfig((current) => ({ ...current, graphqlEndpoint: event.target.value }))} />
                   </label>
+                  <div className="rounded-xl border border-slate-200 bg-white p-3 md:col-span-2" data-testid="indexing-capability">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={indexingSummary.tone === "indexed" ? "default" : "secondary"}>{indexingSummary.label}</Badge>
+                      <span className="text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                        {onchainConfig.networkKey === "custom" ? "Custom EAS chain" : "Known EAS chain"}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">{indexingSummary.detail}</p>
+                  </div>
                 </div>
                 <div className="grid gap-3">
                   <div className="rounded-xl border border-slate-200 bg-white p-3" data-testid="schema-preset-card">

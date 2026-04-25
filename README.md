@@ -119,6 +119,14 @@ const profile = await store.get<{ name: string; avatar: string }>("profile:0xabc
 
 The onchain preset fills in chain config, EAS contract address, EAS version, inline storage for small values, and EASScan verified reads.
 
+Built-in network presets cover the EASScan-indexed EAS deployments for
+Ethereum, Sepolia, Arbitrum, Arbitrum Nova, Base, Base Sepolia, Optimism,
+Optimism Sepolia, Scroll, Polygon, Linea, and Celo. For any other EAS
+deployment, pass a custom `network` object with `chainId`, `easContractAddress`,
+`schemaRegistryAddress`, and optionally `graphqlEndpoint`. Without a GraphQL
+endpoint, onchain writes still work, but remote cross-session reads require a
+custom durable indexer.
+
 ### Private records
 
 Private records encrypt values before they are attested. The wallet signs EAS
@@ -296,6 +304,8 @@ A browser demo lives in [examples/vite-demo](/Users/derekbarrera/Development/Ste
 The same demo also includes an onchain path with:
 
 - Base / Base Sepolia EAS contract prefilled from known network presets
+- all EASScan-indexed EAS chains available in the onchain network selector
+- custom EAS chain inputs for newer or private deployments
 - inline attestation storage for small JSON values
 - schema publishing through `EASStore.schema.ensureDefault(...)`
 - automatic schema UID handoff into the write form

@@ -136,6 +136,7 @@ test("developers can exercise the sdk through the demo flow", async ({ page }) =
   await expect(page.locator('input[data-testid="graphql-endpoint-input"]')).toHaveValue(
     "https://base-sepolia.easscan.org/graphql"
   );
+  await expect(page.getByTestId("indexing-capability")).toContainText("Indexed reads");
   await page.getByRole("button", { name: /Schema Builder/ }).click();
   await expect(page.getByTestId("schema-preset-card")).toContainText("Steer Store v1");
   await expect(page.getByTestId("schema-preset-card")).toContainText(
@@ -298,6 +299,7 @@ test("custom onchain setup validates user supplied contract addresses with a wal
     "0x4200000000000000000000000000000000000020"
   );
   await page.getByTestId("graphql-endpoint-input").fill("");
+  await expect(page.getByTestId("indexing-capability")).toContainText("Write capable");
 
   await page.getByTestId("connect-wallet-button").click();
   await expect(page.getByTestId("error-output")).toContainText(

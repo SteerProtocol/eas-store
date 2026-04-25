@@ -651,11 +651,6 @@ export default function App() {
 
     async function bootOffchainMode() {
       if (mode !== "offchain") {
-        setSignerAddress("");
-        setStatus("Wallet connection required");
-        invalidateOnchainClient(
-          "Switch to onchain mode, complete setup, then connect a wallet before running record operations."
-        );
         return;
       }
 
@@ -830,6 +825,32 @@ export default function App() {
     } catch (cause) {
       setStatus("Failed");
       setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleActivateOnchainMode() {
+    setBusy(true);
+    setError("");
+    setStatus("Connecting wallet and creating onchain client...");
+
+    try {
+      const namespace = namespaceInput.trim() || DEFAULT_NAMESPACE;
+      const nextStore = await createOnchainDemoStore(namespace, onchainConfig);
+      setMode("onchain");
+      applyDemoStore(
+        nextStore,
+        `Onchain client initialized with wallet-scoped namespace ${nextStore.namespace}.`
+      );
+    } catch (cause) {
+      setMode("offchain");
+      setStatus("Ready");
+      setError(
+        cause instanceof Error
+          ? `${cause.message} Staying in local mode.`
+          : `${String(cause)} Staying in local mode.`
+      );
     } finally {
       setBusy(false);
     }
@@ -1265,23 +1286,12 @@ console.log(record.value);
                   className={mode === "onchain" ? "inline-flex h-8 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm" : "inline-flex h-8 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-sm font-medium text-slate-500 shadow-sm"}
                   data-testid="mode-onchain"
                   disabled={busy}
-                  onClick={() => setMode("onchain")}
+                  onClick={() => void handleActivateOnchainMode()}
                 >
                   <span className={busy ? "size-3 rounded-full bg-amber-400" : mode === "onchain" ? "size-3 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(34,197,94,0.12)]" : "size-3 rounded-full bg-slate-300"} />
                   Onchain
                   <span className="sr-only" data-testid="demo-status">{busy ? "Running" : status}</span>
                 </button>
-                {mode === "onchain" ? (
-                  <Button
-                    type="button"
-                    className="h-8 rounded-full bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-700"
-                    data-testid="connect-wallet-button"
-                    disabled={busy}
-                    onClick={() => void handleConnectWallet()}
-                  >
-                    Connect Wallet
-                  </Button>
-                ) : null}
               </div>
             </div>
 
@@ -1695,9 +1705,7 @@ console.log(record.value);
                       <Shield className="size-4" />
                       Schema Builder
                     </Button>
-                    {schemaReady ? (
-                      <Button type="button" data-testid="connect-wallet-from-schema-button" disabled={busy} onClick={() => void handleConnectWallet()}>Connect Store</Button>
-                    ) : (
+                    {schemaReady ? null : (
                       <Button type="button" data-testid="publish-schema-button" disabled={busy} onClick={() => void handlePublishSchema()}>Publish Schema</Button>
                     )}
                     {schemaReady ? <Button type="button" variant="outline" data-testid="publish-another-schema-button" disabled={busy} onClick={() => void handlePublishSchema()}>Publish Another</Button> : null}

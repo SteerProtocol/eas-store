@@ -126,23 +126,8 @@ test("developers can exercise the sdk through the demo flow", async ({ page }) =
   await expect(page.getByTestId("signer-address")).not.toHaveText(previousSigner ?? "");
 
   await page.getByTestId("mode-onchain").click();
-  await expect(page.getByTestId("network-select")).toHaveValue("base-sepolia");
-  await expect(page.locator('input[data-testid="eas-address-input"]')).toHaveValue(
-    "0x4200000000000000000000000000000000000021"
-  );
-  await expect(page.locator('input[data-testid="schema-registry-input"]')).toHaveValue(
-    "0x4200000000000000000000000000000000000020"
-  );
-  await expect(page.locator('input[data-testid="graphql-endpoint-input"]')).toHaveValue(
-    "https://base-sepolia.easscan.org/graphql"
-  );
-  await expect(page.getByTestId("indexing-capability")).toContainText("Indexed reads");
-  await page.getByRole("button", { name: /Schema Builder/ }).click();
-  await expect(page.getByTestId("schema-preset-card")).toContainText("Steer Store v1");
-  await expect(page.getByTestId("schema-preset-card")).toContainText(
-    "namespace, key, value hash"
-  );
-  await expect(page.getByTestId("wallet-help")).toContainText("No injected wallet");
+  await expect(page.getByTestId("error-output")).toContainText("No injected wallet");
+  await expect(page.getByTestId("wallet-help")).toContainText("Ephemeral signer");
 });
 
 test("database manager layout stays responsive without horizontal overflow", async ({ page }) => {
@@ -193,20 +178,15 @@ test("record editor surfaces invalid JSON without mutating the last verified out
   );
 });
 
-test("onchain setup is explicit and fails safely without an injected wallet", async ({ page }) => {
+test("onchain toggle starts wallet flow and falls back to local without a wallet", async ({ page }) => {
   await page.goto("/");
 
   await page.getByTestId("mode-onchain").click();
-  await expect(page.getByTestId("wallet-help")).toContainText("No injected wallet");
-  await expect(page.getByTestId("network-select")).toHaveValue("base-sepolia");
-
-  await page.getByTestId("connect-wallet-button").click();
   await expect(page.getByTestId("error-output")).toContainText("No injected wallet");
-  await expect(page.getByTestId("demo-status")).toContainText("Failed");
-
-  await page.getByTestId("mode-offchain").click();
+  await expect(page.getByTestId("error-output")).toContainText("Staying in local mode");
   await expect(page.getByTestId("demo-status")).toContainText("Ready");
   await expect(page.getByTestId("wallet-help")).toContainText("Ephemeral signer");
+  await expect(page.getByTestId("connect-wallet-button")).toHaveCount(0);
 });
 
 test("mocked onchain wallet validates chain id before creating a client", async ({ page }) => {
@@ -214,11 +194,10 @@ test("mocked onchain wallet validates chain id before creating a client", async 
   await page.goto("/");
 
   await page.getByTestId("mode-onchain").click();
-  await expect(page.getByTestId("wallet-help")).toContainText("Detected");
-  await page.getByTestId("connect-wallet-button").click();
-
   await expect(page.getByTestId("error-output")).toContainText("Switch to chain 84532");
-  await expect(page.getByTestId("demo-status")).toContainText("Failed");
+  await expect(page.getByTestId("error-output")).toContainText("Staying in local mode");
+  await expect(page.getByTestId("demo-status")).toContainText("Ready");
+  await expect(page.getByTestId("wallet-help")).toContainText("Ephemeral signer");
 });
 
 test("mocked onchain wallet can initialize the wallet scoped client", async ({ page }) => {
@@ -226,7 +205,6 @@ test("mocked onchain wallet can initialize the wallet scoped client", async ({ p
   await page.goto("/");
 
   await page.getByTestId("mode-onchain").click();
-  await page.getByTestId("connect-wallet-button").click();
 
   await expect(page.getByTestId("demo-status")).toContainText("Ready");
   await expect(page.getByTestId("active-namespace")).toContainText("demo.profile.111111");
@@ -235,6 +213,7 @@ test("mocked onchain wallet can initialize the wallet scoped client", async ({ p
 });
 
 test("schema builder supports adding templates, moving fields, removing fields, and restoring defaults", async ({ page }) => {
+  await installMockWallet(page, "0x14a34");
   await page.goto("/");
   await switchToSchemaBuilder(page);
   await expect(page.getByTestId("schema-definition-output")).toContainText("bytes32 namespace");
@@ -267,6 +246,7 @@ test("schema builder supports adding templates, moving fields, removing fields, 
 });
 
 test("schema publishing validates empty definitions before requesting a wallet", async ({ page }) => {
+  await installMockWallet(page, "0x14a34");
   await page.goto("/");
   await switchToSchemaBuilder(page);
 
@@ -301,7 +281,7 @@ test("custom onchain setup validates user supplied contract addresses with a wal
   await page.getByTestId("graphql-endpoint-input").fill("");
   await expect(page.getByTestId("indexing-capability")).toContainText("Write capable");
 
-  await page.getByTestId("connect-wallet-button").click();
+  await page.getByTestId("reset-button").click();
   await expect(page.getByTestId("error-output")).toContainText(
     "EAS contract address must be a 20-byte hex address"
   );
@@ -321,14 +301,14 @@ test("custom onchain setup validates chain id, schema registry, and schema uid m
   );
 
   await page.getByTestId("chain-id-input").fill("0");
-  await page.getByTestId("connect-wallet-button").click();
+  await page.getByTestId("reset-button").click();
   await expect(page.getByTestId("error-output")).toContainText(
     "Chain ID must be a positive integer"
   );
 
   await page.getByTestId("chain-id-input").fill("84532");
   await page.getByTestId("schema-registry-input").fill("0xnot-a-registry");
-  await page.getByTestId("connect-wallet-button").click();
+  await page.getByTestId("reset-button").click();
   await expect(page.getByTestId("error-output")).toContainText(
     "Schema registry address must be a 20-byte hex address"
   );
@@ -337,13 +317,13 @@ test("custom onchain setup validates chain id, schema registry, and schema uid m
     "0x4200000000000000000000000000000000000020"
   );
   await page.getByTestId("schema-uid-input").fill("0x1234");
-  await page.getByTestId("connect-wallet-button").click();
+  await page.getByTestId("reset-button").click();
   await expect(page.getByTestId("error-output")).toContainText(
     "Schema UID must be a 32-byte hex string"
   );
 
   await page.getByTestId("schema-uid-input").fill("");
-  await page.getByTestId("connect-wallet-button").click();
+  await page.getByTestId("reset-button").click();
   await expect(page.getByTestId("error-output")).toContainText(
     "Schema UID is required"
   );
@@ -364,7 +344,7 @@ test("custom onchain setup can initialize with a memory indexer when GraphQL is 
   );
   await page.getByTestId("graphql-endpoint-input").fill("");
 
-  await page.getByTestId("connect-wallet-button").click();
+  await page.getByTestId("reset-button").click();
   await expect(page.getByTestId("demo-status")).toContainText("Ready");
   await expect(page.getByTestId("active-namespace")).toContainText("demo.profile.111111");
   await expect(page.getByTestId("last-action")).toContainText("Onchain client initialized");
@@ -386,7 +366,7 @@ test("onchain reconnect reuses the wallet flow and default preset can be restore
     "0x1111111111111111111111111111111111111111111111111111111111111111"
   );
 
-  await page.getByTestId("connect-wallet-button").click();
+  await page.getByTestId("reset-button").click();
   await expect(page.getByTestId("demo-status")).toContainText("Ready");
 
   await page.getByTestId("reset-button").click();

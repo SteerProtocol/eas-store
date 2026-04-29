@@ -42,6 +42,10 @@ function sortRecords(records: IndexedStoreRecord[]): IndexedStoreRecord[] {
   });
 }
 
+function isRootPreviousUID(previousUID: string | undefined): boolean {
+  return !previousUID || previousUID.toLowerCase() === ZERO_UID;
+}
+
 interface CanonicalResolution<T> {
   status: "empty" | "canonical" | "ambiguous";
   chain: Array<StoredRecord<T>>;
@@ -68,11 +72,11 @@ function resolveCanonicalChain<T>(
   const childrenByParent = new Map<string, Array<StoredRecord<T>>>();
 
   for (const record of records) {
-    if (!record.previousUID) {
+    const previousUID = record.previousUID?.toLowerCase();
+
+    if (!previousUID || previousUID === ZERO_UID) {
       continue;
     }
-
-    const previousUID = record.previousUID.toLowerCase();
 
     if (!byUid.has(previousUID)) {
       return {
@@ -87,7 +91,7 @@ function resolveCanonicalChain<T>(
     childrenByParent.set(previousUID, siblings);
   }
 
-  const roots = records.filter((record) => !record.previousUID);
+  const roots = records.filter((record) => isRootPreviousUID(record.previousUID));
 
   if (roots.length !== 1) {
     return {

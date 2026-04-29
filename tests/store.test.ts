@@ -279,6 +279,32 @@ describe("EASKeyStore", () => {
     );
   });
 
+  it("treats ZERO_UID as the root predecessor for onchain query records", async () => {
+    const storage = new MemoryStorage();
+    const root = await makeSyntheticOnchainRecord(storage);
+    vi.spyOn(clientModule, "getTransport").mockReturnValue(undefined);
+    const store = await EASKeyStore.create({
+      chainId: 8453,
+      easContractAddress: EAS_ADDRESS,
+      schemaUID: SCHEMA_UID,
+      namespace: "test.profile",
+      mode: "onchain",
+      signer: createTransactionSigner(),
+      defaultRecipient: EAS_ADDRESS,
+      storage,
+      indexer: createIndexer([root]),
+      verification: {
+        requireChainValidationOnchain: false
+      }
+    });
+
+    await expect(store.get<{ name: string }>("profile:alice")).resolves.toMatchObject({
+      uid: root.attestation.uid,
+      value: { name: "Alice" }
+    });
+    await expect(store.query<{ name: string }>()).resolves.toHaveLength(1);
+  });
+
   it("rejects histories with multiple verified children from one head", async () => {
     const storage = new MemoryStorage();
     const root = await makeSyntheticOnchainRecord(storage, {

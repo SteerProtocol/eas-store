@@ -4,11 +4,18 @@ on:
   release:
     types:
       - published
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
 
 permissions:
   contents: read
   id-token: write
+
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   publish:
@@ -23,19 +30,26 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "24"
+          check-latest: true
           registry-url: "https://registry.npmjs.org"
           cache: npm
+
+      - name: Install latest npm CLI
+        run: |
+          npm install --global npm@latest
+          node --version
+          npm --version
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Typecheck SDK
+      - name: Typecheck package
         run: npm run typecheck
 
-      - name: Test SDK with coverage
+      - name: Test package with coverage
         run: npm test -- --coverage
 
-      - name: Build SDK
+      - name: Build package
         run: npm run build
 
       - name: Publish package

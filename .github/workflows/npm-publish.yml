@@ -1,7 +1,11 @@
 name: Publish to npm
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
     branches:
       - master
   workflow_dispatch:
@@ -13,12 +17,13 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: npm-release-${{ github.ref }}
+  group: npm-publish-${{ github.event.workflow_run.head_branch || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   publish:
     name: Release @steerprotocol/eas-store
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -44,17 +49,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Typecheck package
-        run: npm run typecheck
-
-      - name: Test package with coverage
-        run: npm test -- --coverage
-
       - name: Build package
         run: npm run build
 
       - name: Release package
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"
         run: npm run release

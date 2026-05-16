@@ -19,6 +19,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js",
+      "require": "./dist/testing.cjs"
     }
   },
   "files": [
@@ -62,6 +67,10 @@
     "@ethereum-attestation-service/eas-sdk": "^2.9.0",
     "@scure/bip39": "^2.2.0",
     "ethers": "^6.16.0"
+  },
+  "overrides": {
+    "hardhat": "3.4.5",
+    "npm": "11.14.1"
   },
   "devDependencies": {
     "@semantic-release/commit-analyzer": "^13.0.1",

@@ -88,6 +88,39 @@ console.log(record?.version);
 console.log(record?.verified);
 ```
 
+### Mock Provider For App Tests
+
+Consumer apps can import the testing entrypoint when they want one reusable,
+resettable EAS Store provider for a Vitest, Jest, or Playwright test suite.
+
+```ts
+import { createMockEASStoreProvider } from "@steerprotocol/eas-store/testing";
+
+const easStore = createMockEASStoreProvider({
+  namespace: "my-dapp.test"
+});
+
+beforeEach(() => {
+  easStore.reset();
+});
+
+it("reads app settings", async () => {
+  const store = await easStore.store();
+
+  await store.set("settings:theme", {
+    value: "dark"
+  });
+
+  await expect(store.get("settings:theme")).resolves.toEqual({
+    value: "dark"
+  });
+});
+```
+
+Stores created from the same provider share in-memory storage and indexing, so
+separate app services can see the same mock attestations. Passing a different
+`namespace` keeps records isolated while still using the same provider.
+
 ### Onchain Store
 
 Use onchain mode when records should be public, chain-verifiable, and discoverable through an indexer.
@@ -616,6 +649,23 @@ EASStore.privateSchema.ensureAll(options): Promise<{
   privateValue: EnsuredSchema;
   accessEvent: EnsuredSchema;
 }>
+```
+
+### `@steerprotocol/eas-store/testing`
+
+Test helpers:
+
+```ts
+createMockEASStore(options?): Promise<EASStore>
+createMockEASStoreProvider(options?): MockEASStoreProvider
+
+provider.store(options?): Promise<EASStore>
+provider.advancedStore(options?): Promise<EASKeyStore>
+provider.reset(): void
+provider.getAddress(): Promise<`0x${string}`>
+provider.signer: StoreSigner
+provider.sharedStorage: StorageAdapter
+provider.sharedIndexer: IndexerAdapter
 ```
 
 ### `EASPrivateStore`
